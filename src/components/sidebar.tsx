@@ -101,6 +101,7 @@ export function Sidebar({ icons }: SidebarProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [fetchedItems, setFetchedItems] = useState<WorkspaceSidebarItem[]>([]);
+  const [fetchedDoctypeMap, setFetchedDoctypeMap] = useState<Record<string, { is_tree: number; issingle: number }>>({});
   const { workspaceItems } = useSidebarContext();
 
   const isWorkspace = pathname.startsWith("/workspace/");
@@ -115,13 +116,18 @@ export function Sidebar({ icons }: SidebarProps) {
     fetch(`/api/workspace-sidebar?slug=${encodeURIComponent(slug)}`)
       .then((r) => r.json())
       .then((data) => {
-        if (Array.isArray(data)) setFetchedItems(data);
+        if (data.items) setFetchedItems(data.items);
+        if (data.doctypeMap) setFetchedDoctypeMap(data.doctypeMap);
       })
-      .catch(() => setFetchedItems([]));
+      .catch(() => {
+        setFetchedItems([]);
+        setFetchedDoctypeMap({});
+      });
   }, [pathname, isWorkspace]);
 
   const activeWorkspaceItems =
     workspaceItems.length > 0 ? workspaceItems : fetchedItems;
+  const activeDoctypeMap = fetchedDoctypeMap;
 
   const rootIcons = icons.filter((i) => !i.parent_icon);
   const folderChildren: Record<string, DesktopIcon[]> = {};
@@ -235,15 +241,24 @@ export function Sidebar({ icons }: SidebarProps) {
               </h3>
             )}
             <div className="space-y-1">
-              {section.links.map((link) => (
-                <Link
-                  key={link.idx}
-                  href={`/list/${link.link_to ?? ""}`}
-                  className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900"
-                >
-                  <span className="truncate">{link.label}</span>
-                </Link>
-              ))}
+              {section.links.map((link) => {
+                const linkTo = link.link_to ?? "";
+                const dt = activeDoctypeMap[linkTo];
+                let href = `/list/${linkTo}`;
+                if (dt) {
+                  if (dt.is_tree) href = `/tree/${linkTo}`;
+                  else if (dt.issingle) href = `/form/${linkTo}/default`;
+                }
+                return (
+                  <Link
+                    key={link.idx}
+                    href={href}
+                    className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900"
+                  >
+                    <span className="truncate">{link.label}</span>
+                  </Link>
+                );
+              })}
             </div>
           </div>
         ))}

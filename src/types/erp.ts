@@ -57,6 +57,23 @@ export interface WorkspaceSidebarItem {
   idx: number;
 }
 
+export interface WorkspaceLink {
+  name: string;
+  type: string;
+  label: string;
+  link_to: string | null;
+  link_type: string | null;
+  icon: string | null;
+  is_query_report: number;
+  idx: number;
+}
+
+export interface WorkspaceWidget {
+  type: "chart" | "number_card" | "header" | "card" | "shortcut";
+  data: Record<string, unknown>;
+  col?: number;
+}
+
 export interface DocType {
   name: string;
   module: string;

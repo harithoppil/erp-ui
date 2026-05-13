@@ -8,6 +8,8 @@ import type {
   WorkspaceNumberCard,
   WorkspaceChart,
   WorkspaceSidebarItem,
+  WorkspaceLink,
+  WorkspaceWidget,
   FiscalYear,
   DocType,
 } from "@/types/erp";
@@ -112,7 +114,9 @@ interface WorkspaceClientProps {
   numberCards: WorkspaceNumberCard[];
   charts: WorkspaceChart[];
   sidebarItems: WorkspaceSidebarItem[];
+  links: WorkspaceLink[];
   fiscalYears: FiscalYear[];
+  widgets: WorkspaceWidget[];
   doctypeMap: Map<string, DocType>;
 }
 
@@ -168,13 +172,19 @@ function SimpleBarChart({ data }: { data: ChartData }) {
   );
 }
 
+function stripHtml(html: string): string {
+  return html.replace(/<[^>]*>/g, "");
+}
+
 export function WorkspaceClient({
   workspace,
   shortcuts,
   numberCards,
   charts,
   sidebarItems,
+  links,
   fiscalYears,
+  widgets,
   doctypeMap,
 }: WorkspaceClientProps) {
   const { setWorkspaceItems } = useSidebarContext();
@@ -245,33 +255,6 @@ export function WorkspaceClient({
     fetchChart();
   }, [charts, startYear, endYear]);
 
-  const sections: { title: string; links: WorkspaceSidebarItem[] }[] = [];
-  let currentSection = { title: "", links: [] as WorkspaceSidebarItem[] };
-
-  for (const item of sidebarItems) {
-    if (item.type === "Section Break") {
-      if (currentSection.links.length > 0 || currentSection.title) {
-        sections.push(currentSection);
-      }
-      currentSection = { title: item.label, links: [] };
-    } else {
-      currentSection.links.push(item);
-    }
-  }
-  if (currentSection.links.length > 0 || currentSection.title) {
-    sections.push(currentSection);
-  }
-
-  function getLinkHref(item: WorkspaceSidebarItem): string {
-    const linkTo = item.link_to ?? "";
-    if (!linkTo) return "#";
-    const dt = doctypeMap.get(linkTo);
-    if (!dt) return `/list/${linkTo}`;
-    if (dt.is_tree) return `/tree/${linkTo}`;
-    if (dt.issingle) return `/form/${linkTo}/default`;
-    return `/list/${linkTo}`;
-  }
-
   function getShortcutHref(linkTo: string | null): string {
     if (!linkTo) return "#";
     const dt = doctypeMap.get(linkTo);
@@ -282,6 +265,180 @@ export function WorkspaceClient({
   }
 
   const showYearAlert = !startYear || !endYear;
+
+  // Build card sections map from links
+  const cardSectionsMap = new Map<string, WorkspaceLink[]>();
+  let currentTitle = "";
+  for (const link of links) {
+    if (link.type === "Card Break") {
+      currentTitle = link.label;
+      cardSectionsMap.set(currentTitle, []);
+    } else if (link.type === "Link" && currentTitle) {
+      const section = cardSectionsMap.get(currentTitle);
+      if (section) section.push(link);
+    }
+  }
+
+  // Group consecutive widgets of the same type for layout
+  const widgetGroups: { type: string; widgets: WorkspaceWidget[] }[] = [];
+  for (const widget of widgets) {
+    const last = widgetGroups[widgetGroups.length - 1];
+    if (last && last.type === widget.type) {
+      last.widgets.push(widget);
+    } else {
+      widgetGroups.push({ type: widget.type, widgets: [widget] });
+    }
+  }
+
+  function renderWidgetGroup(group: { type: string; widgets: WorkspaceWidget[] }, groupIdx: number) {
+    switch (group.type) {
+      case "chart": {
+        const chartWidget = group.widgets[0];
+        const chartName = chartWidget.data?.chart_name as string;
+        const chart = charts.find((c) => c.chart_name === chartName);
+        if (!chart) return null;
+        return (
+          <Card key={`chart-${groupIdx}`}>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-base">{chart.label}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center gap-4">
+                <div className="flex-1">
+                  <label className="mb-1 block text-sm font-medium text-gray-700">
+                    Start Year
+                  </label>
+                  <Select value={startYear} onValueChange={(v) => v && setStartYear(v)}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select start year" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {fiscalYears.map((fy) => (
+                        <SelectItem key={fy.name} value={fy.name}>
+                          {fy.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex-1">
+                  <label className="mb-1 block text-sm font-medium text-gray-700">
+                    End Year
+                  </label>
+                  <Select value={endYear} onValueChange={(v) => v && setEndYear(v)}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select end year" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {fiscalYears.map((fy) => (
+                        <SelectItem key={fy.name} value={fy.name}>
+                          {fy.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              {showYearAlert && (
+                <div className="flex items-center gap-2 rounded-md bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                  <AlertCircle size={16} />
+                  <span>Start Year and End Year are mandatory</span>
+                </div>
+              )}
+              {chartLoading || !chartData ? (
+                <Skeleton className="h-[260px] w-full" />
+              ) : (
+                <SimpleBarChart data={chartData} />
+              )}
+            </CardContent>
+          </Card>
+        );
+      }
+
+      case "number_card": {
+        const cardNames = group.widgets.map((w) => w.data?.number_card_name as string);
+        const cards = numberCards.filter(
+          (nc) => cardNames.includes(nc.number_card_name) || cardNames.includes(nc.label)
+        );
+        if (cards.length === 0) return null;
+        return (
+          <div key={`nc-${groupIdx}`} className="grid grid-cols-2 gap-4 md:grid-cols-4">
+            {cards.map((card) => {
+              const data = cardData[card.number_card_name];
+              return (
+                <Card key={card.idx}>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium text-gray-500">
+                      {card.label}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {cardsLoading || !data ? (
+                      <Skeleton className="h-8 w-24" />
+                    ) : (
+                      <div className="text-2xl font-bold text-gray-900">
+                        {formatCurrency(data.value)}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        );
+      }
+
+      case "header": {
+        const text = group.widgets[0].data?.text as string;
+        if (!text) return null;
+        return (
+          <h2 key={`header-${groupIdx}`} className="text-xl font-semibold text-gray-900 pt-2">
+            {stripHtml(text)}
+          </h2>
+        );
+      }
+
+      case "card": {
+        return (
+          <div key={`cards-${groupIdx}`} className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {group.widgets.map((w, i) => {
+              const cardName = w.data?.card_name as string;
+              const sectionLinks = cardSectionsMap.get(cardName);
+              if (!sectionLinks || sectionLinks.length === 0) return null;
+              return (
+                <Card key={`card-${groupIdx}-${i}`}>
+                  <CardHeader>
+                    <CardTitle className="text-base">{cardName}</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 gap-2">
+                      {sectionLinks.map((link) => {
+                        const href = link.link_type === "Report"
+                          ? `/report/${link.link_to}`
+                          : getShortcutHref(link.link_to);
+                        return (
+                          <Link
+                            key={link.idx}
+                            href={href}
+                            className="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-100 hover:text-gray-900"
+                          >
+                            <span>{link.label}</span>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        );
+      }
+
+      default:
+        return null;
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -306,111 +463,140 @@ export function WorkspaceClient({
         </div>
       )}
 
-      {numberCards.length > 0 && (
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-          {numberCards.map((card) => {
-            const data = cardData[card.number_card_name];
-            return (
-              <Card key={card.idx}>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-gray-500">
-                    {card.label}
+      {widgets.length > 0
+        ? widgetGroups.map((group, i) => renderWidgetGroup(group, i))
+        : (
+          <>
+            {numberCards.length > 0 && (
+              <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+                {numberCards.map((card) => {
+                  const data = cardData[card.number_card_name];
+                  return (
+                    <Card key={card.idx}>
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-sm font-medium text-gray-500">
+                          {card.label}
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        {cardsLoading || !data ? (
+                          <Skeleton className="h-8 w-24" />
+                        ) : (
+                          <div className="text-2xl font-bold text-gray-900">
+                            {formatCurrency(data.value)}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
+
+            {charts.length > 0 && (
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-base">
+                    {charts[0].label}
                   </CardTitle>
                 </CardHeader>
-                <CardContent>
-                  {cardsLoading || !data ? (
-                    <Skeleton className="h-8 w-24" />
-                  ) : (
-                    <div className="text-2xl font-bold text-gray-900">
-                      {formatCurrency(data.value)}
+                <CardContent className="space-y-4">
+                  <div className="flex items-center gap-4">
+                    <div className="flex-1">
+                      <label className="mb-1 block text-sm font-medium text-gray-700">
+                        Start Year
+                      </label>
+                      <Select value={startYear} onValueChange={(v) => v && setStartYear(v)}>
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Select start year" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {fiscalYears.map((fy) => (
+                            <SelectItem key={fy.name} value={fy.name}>
+                              {fy.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
+                    <div className="flex-1">
+                      <label className="mb-1 block text-sm font-medium text-gray-700">
+                        End Year
+                      </label>
+                      <Select value={endYear} onValueChange={(v) => v && setEndYear(v)}>
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Select end year" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {fiscalYears.map((fy) => (
+                            <SelectItem key={fy.name} value={fy.name}>
+                              {fy.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  {showYearAlert && (
+                    <div className="flex items-center gap-2 rounded-md bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                      <AlertCircle size={16} />
+                      <span>Start Year and End Year are mandatory</span>
+                    </div>
+                  )}
+                  {chartLoading || !chartData ? (
+                    <Skeleton className="h-[260px] w-full" />
+                  ) : (
+                    <SimpleBarChart data={chartData} />
                   )}
                 </CardContent>
               </Card>
-            );
-          })}
-        </div>
-      )}
-
-      {charts.length > 0 && (
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-base">
-              {charts[0].label}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center gap-4">
-              <div className="flex-1">
-                <label className="mb-1 block text-sm font-medium text-gray-700">
-                  Start Year
-                </label>
-                <Select value={startYear} onValueChange={(v) => v && setStartYear(v)}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select start year" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {fiscalYears.map((fy) => (
-                      <SelectItem key={fy.name} value={fy.name}>
-                        {fy.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex-1">
-                <label className="mb-1 block text-sm font-medium text-gray-700">
-                  End Year
-                </label>
-                <Select value={endYear} onValueChange={(v) => v && setEndYear(v)}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select end year" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {fiscalYears.map((fy) => (
-                      <SelectItem key={fy.name} value={fy.name}>
-                        {fy.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            {showYearAlert && (
-              <div className="flex items-center gap-2 rounded-md bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                <AlertCircle size={16} />
-                <span>Start Year and End Year are mandatory</span>
-              </div>
             )}
-            {chartLoading || !chartData ? (
-              <Skeleton className="h-[260px] w-full" />
-            ) : (
-              <SimpleBarChart data={chartData} />
-            )}
-          </CardContent>
-        </Card>
-      )}
 
-      {sections.map((section, i) => (
-        <Card key={i}>
-          <CardHeader>
-            <CardTitle className="text-base">{section.title}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-4">
-              {section.links.map((link) => (
-                <Link
-                  key={link.idx}
-                  href={getLinkHref(link)}
-                  className="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-100 hover:text-gray-900"
-                >
-                  <span>{link.label}</span>
-                </Link>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      ))}
+            {(() => {
+              const cardSections: { title: string; links: WorkspaceLink[] }[] = [];
+              let currentCard: { title: string; links: WorkspaceLink[] } | null = null;
+              for (const link of links) {
+                if (link.type === "Card Break") {
+                  if (currentCard && currentCard.links.length > 0) {
+                    cardSections.push(currentCard);
+                  }
+                  currentCard = { title: link.label, links: [] };
+                } else if (currentCard && link.type === "Link") {
+                  currentCard.links.push(link);
+                }
+              }
+              if (currentCard && currentCard.links.length > 0) {
+                cardSections.push(currentCard);
+              }
+
+              return cardSections.map((card, i) => (
+                <Card key={`card-${i}`}>
+                  <CardHeader>
+                    <CardTitle className="text-base">{card.title}</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-4">
+                      {card.links.map((link) => {
+                        const href = link.link_type === "Report"
+                          ? `/report/${link.link_to}`
+                          : getShortcutHref(link.link_to);
+                        return (
+                          <Link
+                            key={link.idx}
+                            href={href}
+                            className="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-100 hover:text-gray-900"
+                          >
+                            <span>{link.label}</span>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  </CardContent>
+                </Card>
+              ));
+            })()}
+          </>
+        )}
     </div>
   );
 }
