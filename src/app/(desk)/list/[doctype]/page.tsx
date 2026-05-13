@@ -1,4 +1,5 @@
 import { query, queryOne } from "@/lib/db";
+import { tableName } from "@/lib/frappe";
 import type { DocType, DocField } from "@/types/erp";
 import { notFound } from "next/navigation";
 import { ListClient } from "./list-client";
@@ -34,7 +35,7 @@ export default async function ListPage({ params }: PageProps) {
       : fields.filter((f) => !f.hidden).slice(0, 5);
 
   // Get actual data — handle empty display fields gracefully
-  const tableName = `tab${doctype.replace(/\s+/g, "")}`;
+  const table = tableName(doctype);
   const selectCols = displayFields.length > 0
     ? ", " + displayFields.map((f) => `"${f.fieldname}"`).join(", ")
     : "";
@@ -42,7 +43,7 @@ export default async function ListPage({ params }: PageProps) {
   let rows: Record<string, unknown>[] = [];
   try {
     rows = await query<Record<string, unknown>>(
-      `SELECT name${selectCols} FROM "${tableName}" ORDER BY creation DESC LIMIT 50`
+      `SELECT name${selectCols} FROM "${table}" ORDER BY creation DESC LIMIT 50`
     );
   } catch {
     rows = [];

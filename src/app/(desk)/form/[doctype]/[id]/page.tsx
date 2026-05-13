@@ -20,14 +20,60 @@ export default async function FormPage({ params }: PageProps) {
 
   if (!docType) notFound();
 
-  // Get all visible fields — include Section Break and Column Break for layout
+  // Get all visible fields — include Section Break, Column Break, Table for layout/child grids
   const fields = await query<DocField>(
     `SELECT name, parent, label, fieldname, fieldtype, options, hidden, idx, "default", description, depends_on, read_only, reqd, in_list_view, in_standard_filter
      FROM "tabDocField"
-     WHERE parent = $1 AND hidden = 0 AND fieldtype NOT IN ('HTML', 'Button', 'Image', 'Color', 'Heading', 'Attach', 'Attach Image', 'Signature', 'Geolocation')
+     WHERE parent = $1 AND hidden = 0 AND fieldtype NOT IN ('HTML', 'Button', 'Image', 'Color', 'Heading', 'Attach', 'Attach Image', 'Signature', 'Geolocation', 'Table MultiSelect')
      ORDER BY idx`,
     [doctype]
   );
+
+  // Pre-fetch child-table data + their columns for Table fields
+  const tableName = `tab${doctype}`;
+  const childTablesData: Record<string, {
+    rows: Record<string, unknown>[];
+    fields: { fieldname: string; label: string; fieldtype: string }[];
+    options: string;
+  }> = {};
+
+  if (id !== "new" && !docType.issingle) {
+    const tableFields = fields.filter(
+      (f) => (f.fieldtype === "Table" || f.fieldtype === "Table MultiSelect") && f.options
+    );
+    for (const tf of tableFields) {
+      const childDocType = tf.options!;
+      try {
+        const childFields = await query<DocField>(
+          `SELECT fieldname, label, fieldtype, options, in_list_view
+           FROM "tabDocField"
+           WHERE parent = $1 AND in_list_view = 1 AND hidden = 0
+             AND fieldtype NOT IN ('Section Break', 'Column Break', 'Tab Break', 'HTML', 'Button', 'Image', 'Heading', 'Table', 'Table MultiSelect')
+           ORDER BY idx`,
+          [childDocType]
+        );
+        const cols = childFields.length > 0
+          ? childFields.map((f) => `"${f.fieldname}"`).join(", ")
+          : "*";
+        const childTable = `tab${childDocType}`;
+        const childRows = await query<Record<string, unknown>>(
+          `SELECT name, ${cols} FROM "${childTable}" WHERE parent = $1 AND parenttype = $2 ORDER BY idx`,
+          [id, doctype]
+        );
+        childTablesData[tf.fieldname] = {
+          rows: childRows,
+          fields: childFields.map((f) => ({
+            fieldname: f.fieldname,
+            label: f.label,
+            fieldtype: f.fieldtype,
+          })),
+          options: childDocType,
+        };
+      } catch {
+        // Skip on error
+      }
+    }
+  }
 
   // Group fields by tabs (Tab Break) and sections (Section Break)
   const tabs: FormTab[] = [];
@@ -70,7 +116,6 @@ export default async function FormPage({ params }: PageProps) {
   // Get existing doc data if not creating new
   let docData: Record<string, unknown> | null = null;
   if (id !== "new" && !docType.issingle) {
-    const tableName = `tab${doctype.replace(/\s+/g, "")}`;
     try {
       docData = await queryOne<Record<string, unknown>>(
         `SELECT * FROM "${tableName}" WHERE name = $1`,
@@ -108,6 +153,7 @@ export default async function FormPage({ params }: PageProps) {
       docData={docData ?? {}}
       isNew={id === "new"}
       docName={id === "new" ? "" : id}
+      childTables={childTablesData}
     />
   );
 }

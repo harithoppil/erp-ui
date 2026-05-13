@@ -18,7 +18,7 @@ interface ReportMeta {
 }
 
 function tableName(doctype: string): string {
-  return `tab${doctype.replace(/\s+/g, "")}`;
+  return `tab${doctype}`;
 }
 
 export default async function ReportPage({ params }: PageProps) {

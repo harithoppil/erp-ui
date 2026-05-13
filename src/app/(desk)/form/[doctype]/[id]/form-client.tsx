@@ -33,12 +33,19 @@ import {
 } from "@/components/ui/tabs";
 import { ArrowLeft, Save, Loader2 } from "lucide-react";
 
+interface ChildTableData {
+  rows: Record<string, unknown>[];
+  fields: { fieldname: string; label: string; fieldtype: string }[];
+  options: string;
+}
+
 interface FormClientProps {
   docType: DocType;
   tabs: FormTab[];
   docData: Record<string, unknown>;
   isNew: boolean;
   docName: string;
+  childTables: Record<string, ChildTableData>;
 }
 
 export function FormClient({
@@ -47,6 +54,7 @@ export function FormClient({
   docData,
   isNew,
   docName,
+  childTables,
 }: FormClientProps) {
   const router = useRouter();
   const [values, setValues] = useState<Record<string, unknown>>(docData);
@@ -223,6 +231,54 @@ export function FormClient({
           />
         );
 
+      case "Table":
+      case "Table MultiSelect": {
+        const child = childTables[field.fieldname];
+        if (!child) {
+          return (
+            <div className="rounded-md border border-dashed border-gray-200 p-3 text-xs text-gray-400">
+              {field.options ? `No child rows in ${field.options}` : "—"}
+            </div>
+          );
+        }
+        return (
+          <div className="col-span-full overflow-x-auto rounded-md border">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-600">#</th>
+                  {child.fields.map((f) => (
+                    <th key={f.fieldname} className="px-3 py-2 text-left text-xs font-medium text-gray-600">
+                      {f.label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {child.rows.length === 0 ? (
+                  <tr>
+                    <td colSpan={child.fields.length + 1} className="px-3 py-3 text-center text-xs text-gray-400">
+                      No rows
+                    </td>
+                  </tr>
+                ) : (
+                  child.rows.map((row, i) => (
+                    <tr key={String(row.name)} className="border-t">
+                      <td className="px-3 py-2 text-xs text-gray-500">{i + 1}</td>
+                      {child.fields.map((f) => (
+                        <td key={f.fieldname} className="px-3 py-2 text-xs">
+                          {formatCellValue(row[f.fieldname], f.fieldtype)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        );
+      }
+
       default:
         // Fallback: show as text input
         return (
@@ -235,6 +291,22 @@ export function FormClient({
           />
         );
     }
+  }
+
+  function formatCellValue(value: unknown, fieldtype: string): string {
+    if (value === null || value === undefined) return "—";
+    if (fieldtype === "Check") return value ? "Yes" : "No";
+    if (fieldtype === "Currency" || fieldtype === "Float") {
+      const num = Number(value);
+      return isNaN(num) ? String(value) : num.toLocaleString();
+    }
+    if (fieldtype === "Date" && value) {
+      return new Date(String(value)).toLocaleDateString();
+    }
+    if (fieldtype === "Datetime" && value) {
+      return new Date(String(value)).toLocaleString();
+    }
+    return String(value);
   }
 
   const displayTitle = isNew

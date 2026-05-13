@@ -8,7 +8,7 @@ interface DeleteBody {
 }
 
 function tableName(doctype: string): string {
-  return `tab${doctype.replace(/\s+/g, "")}`;
+  return `tab${doctype}`;
 }
 
 export async function POST(request: NextRequest) {

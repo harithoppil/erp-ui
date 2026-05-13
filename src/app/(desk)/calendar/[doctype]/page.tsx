@@ -16,7 +16,7 @@ interface CalendarView {
 }
 
 function tableName(doctype: string): string {
-  return `tab${doctype.replace(/\s+/g, "")}`;
+  return `tab${doctype}`;
 }
 
 export default async function CalendarPage({ params }: PageProps) {

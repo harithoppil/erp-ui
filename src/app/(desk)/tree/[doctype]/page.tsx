@@ -27,17 +27,18 @@ export default async function TreePage({ params }: PageProps) {
   if (!docType || !docType.is_tree) notFound();
 
   // Fetch tree nodes using nested set (lft/rgt)
-  const tableName = `tab${doctype.replace(/\s+/g, "")}`;
+  const table = `tab${doctype}`;
+  const parentCol = `parent_${doctype.replace(/\s+/g, "_").toLowerCase()}`;
   let nodes: TreeNode[] = [];
   try {
     nodes = await query<TreeNode>(
-      `SELECT name, lft, rgt, is_group, parent_${doctype.replace(/\s+/g, "").toLowerCase()} as parent_field FROM "${tableName}" ORDER BY lft`
+      `SELECT name, lft, rgt, is_group, "${parentCol}" as parent_field FROM "${table}" ORDER BY lft`
     );
   } catch {
     // Fallback: try simpler query
     try {
       nodes = await query<TreeNode>(
-        `SELECT name, lft, rgt, is_group FROM "${tableName}" ORDER BY lft`
+        `SELECT name, lft, rgt, is_group FROM "${table}" ORDER BY lft`
       );
     } catch {
       nodes = [];

@@ -3,7 +3,7 @@ import type { DocType } from "@/types/erp";
 import { NextRequest } from "next/server";
 
 function tableName(doctype: string): string {
-  return `tab${doctype.replace(/\s+/g, "")}`;
+  return `tab${doctype}`;
 }
 
 interface LinkResult {

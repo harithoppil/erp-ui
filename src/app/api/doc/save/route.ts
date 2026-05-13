@@ -9,7 +9,7 @@ interface SaveBody {
 }
 
 function tableName(doctype: string): string {
-  return `tab${doctype.replace(/\s+/g, "")}`;
+  return `tab${doctype}`;
 }
 
 function generateName(doctype: string): string {

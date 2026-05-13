@@ -9,7 +9,7 @@ interface PageProps {
 }
 
 function tableName(doctype: string): string {
-  return `tab${doctype.replace(/\s+/g, "")}`;
+  return `tab${doctype}`;
 }
 
 export default async function KanbanPage({ params, searchParams }: PageProps) {

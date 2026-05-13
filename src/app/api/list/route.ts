@@ -3,7 +3,7 @@ import type { DocType, DocField } from "@/types/erp";
 import { NextRequest } from "next/server";
 
 function tableName(doctype: string): string {
-  return `tab${doctype.replace(/\s+/g, "")}`;
+  return `tab${doctype}`;
 }
 
 export async function GET(request: NextRequest) {
