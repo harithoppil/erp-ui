@@ -4,6 +4,7 @@ import { query } from "@/lib/db";
 import type { DesktopIcon } from "@/types/erp";
 import { Sidebar } from "@/components/sidebar";
 import { TopBar } from "@/components/topbar";
+import { SidebarProvider } from "@/components/sidebar-context";
 
 async function getSidebarItems(): Promise<DesktopIcon[]> {
   return query<DesktopIcon>(
@@ -25,14 +26,16 @@ export default async function DeskLayout({
   const sidebarItems = await getSidebarItems();
 
   return (
-    <div className="flex h-screen overflow-hidden">
-      <Sidebar icons={sidebarItems} />
-      <div className="flex flex-1 flex-col overflow-hidden lg:ml-64">
-        <TopBar user={session} />
-        <main className="flex-1 overflow-y-auto bg-[#f5f5f5] p-6">
-          {children}
-        </main>
+    <SidebarProvider>
+      <div className="flex h-screen overflow-hidden">
+        <Sidebar icons={sidebarItems} />
+        <div className="flex flex-1 flex-col overflow-hidden lg:ml-64">
+          <TopBar user={session} />
+          <main className="flex-1 overflow-y-auto bg-[#f5f5f5] p-6">
+            {children}
+          </main>
+        </div>
       </div>
-    </div>
+    </SidebarProvider>
   );
 }

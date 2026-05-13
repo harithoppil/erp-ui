@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import type { DesktopIcon } from "@/types/erp";
+import type { DesktopIcon, WorkspaceSidebarItem } from "@/types/erp";
+import { useSidebarContext } from "@/components/sidebar-context";
 import {
   Home,
   DollarSign,
@@ -99,6 +100,28 @@ export function Sidebar({ icons }: SidebarProps) {
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
+  const [fetchedItems, setFetchedItems] = useState<WorkspaceSidebarItem[]>([]);
+  const { workspaceItems } = useSidebarContext();
+
+  const isWorkspace = pathname.startsWith("/workspace/");
+
+  // Fetch workspace sidebar items directly when in a workspace
+  useEffect(() => {
+    if (!isWorkspace) {
+      setFetchedItems([]);
+      return;
+    }
+    const slug = pathname.replace("/workspace/", "");
+    fetch(`/api/workspace-sidebar?slug=${encodeURIComponent(slug)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data)) setFetchedItems(data);
+      })
+      .catch(() => setFetchedItems([]));
+  }, [pathname, isWorkspace]);
+
+  const activeWorkspaceItems =
+    workspaceItems.length > 0 ? workspaceItems : fetchedItems;
 
   const rootIcons = icons.filter((i) => !i.parent_icon);
   const folderChildren: Record<string, DesktopIcon[]> = {};
@@ -184,6 +207,50 @@ export function Sidebar({ icons }: SidebarProps) {
     );
   }
 
+  function renderWorkspaceNav() {
+    const sections: { title: string; links: WorkspaceSidebarItem[] }[] = [];
+    let currentSection = { title: "", links: [] as WorkspaceSidebarItem[] };
+
+    for (const item of activeWorkspaceItems) {
+      if (item.type === "Section Break") {
+        if (currentSection.links.length > 0 || currentSection.title) {
+          sections.push(currentSection);
+        }
+        currentSection = { title: item.label, links: [] };
+      } else {
+        currentSection.links.push(item);
+      }
+    }
+    if (currentSection.links.length > 0 || currentSection.title) {
+      sections.push(currentSection);
+    }
+
+    return (
+      <div className="space-y-4">
+        {sections.map((section, i) => (
+          <div key={i}>
+            {section.title && (
+              <h3 className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-gray-400">
+                {section.title}
+              </h3>
+            )}
+            <div className="space-y-1">
+              {section.links.map((link) => (
+                <Link
+                  key={link.idx}
+                  href={`/list/${link.link_to ?? ""}`}
+                  className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900"
+                >
+                  <span className="truncate">{link.label}</span>
+                </Link>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <>
       {/* Mobile toggle */}
@@ -223,7 +290,9 @@ export function Sidebar({ icons }: SidebarProps) {
               <span>Home</span>
             </button>
 
-            {rootIcons.map(renderIcon)}
+            {isWorkspace && activeWorkspaceItems.length > 0
+              ? renderWorkspaceNav()
+              : rootIcons.map(renderIcon)}
           </nav>
 
           {/* Footer */}

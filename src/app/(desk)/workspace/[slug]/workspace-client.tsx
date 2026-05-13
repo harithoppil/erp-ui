@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import type {
   Workspace,
@@ -8,6 +9,7 @@ import type {
   WorkspaceChart,
   WorkspaceSidebarItem,
   FiscalYear,
+  DocType,
 } from "@/types/erp";
 import {
   Card,
@@ -25,6 +27,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { AlertCircle } from "lucide-react";
+import { useSidebarContext } from "@/components/sidebar-context";
 import {
   Home,
   DollarSign,
@@ -110,6 +113,59 @@ interface WorkspaceClientProps {
   charts: WorkspaceChart[];
   sidebarItems: WorkspaceSidebarItem[];
   fiscalYears: FiscalYear[];
+  doctypeMap: Map<string, DocType>;
+}
+
+interface NumberCardData {
+  value: number;
+  label: string;
+}
+
+interface ChartData {
+  labels: string[];
+  datasets: { name: string; values: number[] }[];
+}
+
+function formatCurrency(value: number): string {
+  const absValue = Math.abs(value);
+  if (absValue >= 10000000) {
+    return `₹ ${(value / 10000000).toFixed(2)} Cr`;
+  }
+  if (absValue >= 100000) {
+    return `₹ ${(value / 100000).toFixed(2)} L`;
+  }
+  if (absValue >= 1000) {
+    return `₹ ${(value / 1000).toFixed(2)} K`;
+  }
+  return `₹ ${value.toFixed(2)}`;
+}
+
+function SimpleBarChart({ data }: { data: ChartData }) {
+  const values = data.datasets[0]?.values ?? [];
+  const max = Math.max(...values, 1);
+
+  return (
+    <div className="flex items-end gap-6 h-[220px] pt-6 px-4">
+      {data.labels.map((label, i) => {
+        const value = values[i] ?? 0;
+        const height = max > 0 ? (value / max) * 100 : 0;
+        return (
+          <div key={label} className="flex flex-col items-center gap-2 flex-1">
+            <div className="text-sm font-semibold text-gray-700">
+              {formatCurrency(value)}
+            </div>
+            <div className="w-full max-w-[100px] flex items-end">
+              <div
+                className="w-full bg-blue-500 rounded-t transition-all duration-500"
+                style={{ height: `${height * 1.5}px` }}
+              />
+            </div>
+            <div className="text-sm text-gray-600 font-medium">{label}</div>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 export function WorkspaceClient({
@@ -119,7 +175,76 @@ export function WorkspaceClient({
   charts,
   sidebarItems,
   fiscalYears,
+  doctypeMap,
 }: WorkspaceClientProps) {
+  const { setWorkspaceItems } = useSidebarContext();
+  const [cardData, setCardData] = useState<Record<string, NumberCardData>>({});
+  const [cardsLoading, setCardsLoading] = useState(false);
+  const [chartData, setChartData] = useState<ChartData | null>(null);
+  const [chartLoading, setChartLoading] = useState(false);
+  const [startYear, setStartYear] = useState("2025-2026");
+  const [endYear, setEndYear] = useState("2025-2026");
+
+  useEffect(() => {
+    setWorkspaceItems(sidebarItems);
+    return () => setWorkspaceItems([]);
+  }, [sidebarItems, setWorkspaceItems]);
+
+  useEffect(() => {
+    async function fetchCards() {
+      if (numberCards.length === 0) return;
+      setCardsLoading(true);
+      const results: Record<string, NumberCardData> = {};
+      await Promise.all(
+        numberCards.map(async (card) => {
+          try {
+            const res = await fetch("/api/number-card", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ name: card.number_card_name }),
+            });
+            if (res.ok) {
+              const data = await res.json();
+              results[card.number_card_name] = data;
+            }
+          } catch (e) {
+            console.error("Failed to fetch number card:", e);
+          }
+        })
+      );
+      setCardData(results);
+      setCardsLoading(false);
+    }
+    fetchCards();
+  }, [numberCards]);
+
+  useEffect(() => {
+    async function fetchChart() {
+      if (charts.length === 0) return;
+      setChartLoading(true);
+      try {
+        const res = await fetch("/api/pl-chart", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            company: "Aries Marine",
+            fromYear: startYear,
+            toYear: endYear,
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setChartData(data);
+        }
+      } catch (e) {
+        console.error("Failed to fetch chart:", e);
+      } finally {
+        setChartLoading(false);
+      }
+    }
+    fetchChart();
+  }, [charts, startYear, endYear]);
+
   const sections: { title: string; links: WorkspaceSidebarItem[] }[] = [];
   let currentSection = { title: "", links: [] as WorkspaceSidebarItem[] };
 
@@ -139,8 +264,24 @@ export function WorkspaceClient({
 
   function getLinkHref(item: WorkspaceSidebarItem): string {
     const linkTo = item.link_to ?? "";
+    if (!linkTo) return "#";
+    const dt = doctypeMap.get(linkTo);
+    if (!dt) return `/list/${linkTo}`;
+    if (dt.is_tree) return `/tree/${linkTo}`;
+    if (dt.issingle) return `/form/${linkTo}/default`;
     return `/list/${linkTo}`;
   }
+
+  function getShortcutHref(linkTo: string | null): string {
+    if (!linkTo) return "#";
+    const dt = doctypeMap.get(linkTo);
+    if (!dt) return `/list/${linkTo}`;
+    if (dt.is_tree) return `/tree/${linkTo}`;
+    if (dt.issingle) return `/form/${linkTo}/default`;
+    return `/list/${linkTo}`;
+  }
+
+  const showYearAlert = !startYear || !endYear;
 
   return (
     <div className="space-y-6">
@@ -149,10 +290,10 @@ export function WorkspaceClient({
       </h1>
 
       {shortcuts.length > 0 && (
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3">
           {shortcuts.map((s) => {
             const Icon = getIcon(s.icon);
-            const href = `/list/${s.link_to ?? ""}`;
+            const href = getShortcutHref(s.link_to);
             return (
               <Link key={s.idx} href={href}>
                 <Button variant="outline" className="gap-2">
@@ -167,18 +308,27 @@ export function WorkspaceClient({
 
       {numberCards.length > 0 && (
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-          {numberCards.map((card) => (
-            <Card key={card.idx}>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-gray-500">
-                  {card.label}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Skeleton className="h-8 w-24" />
-              </CardContent>
-            </Card>
-          ))}
+          {numberCards.map((card) => {
+            const data = cardData[card.number_card_name];
+            return (
+              <Card key={card.idx}>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-gray-500">
+                    {card.label}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {cardsLoading || !data ? (
+                    <Skeleton className="h-8 w-24" />
+                  ) : (
+                    <div className="text-2xl font-bold text-gray-900">
+                      {formatCurrency(data.value)}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
 
@@ -195,7 +345,7 @@ export function WorkspaceClient({
                 <label className="mb-1 block text-sm font-medium text-gray-700">
                   Start Year
                 </label>
-                <Select>
+                <Select value={startYear} onValueChange={(v) => v && setStartYear(v)}>
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select start year" />
                   </SelectTrigger>
@@ -212,7 +362,7 @@ export function WorkspaceClient({
                 <label className="mb-1 block text-sm font-medium text-gray-700">
                   End Year
                 </label>
-                <Select>
+                <Select value={endYear} onValueChange={(v) => v && setEndYear(v)}>
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select end year" />
                   </SelectTrigger>
@@ -226,11 +376,17 @@ export function WorkspaceClient({
                 </Select>
               </div>
             </div>
-            <div className="flex items-center gap-2 rounded-md bg-amber-50 px-4 py-3 text-sm text-amber-800">
-              <AlertCircle size={16} />
-              <span>Start Year and End Year are mandatory</span>
-            </div>
-            <Skeleton className="h-[260px] w-full" />
+            {showYearAlert && (
+              <div className="flex items-center gap-2 rounded-md bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                <AlertCircle size={16} />
+                <span>Start Year and End Year are mandatory</span>
+              </div>
+            )}
+            {chartLoading || !chartData ? (
+              <Skeleton className="h-[260px] w-full" />
+            ) : (
+              <SimpleBarChart data={chartData} />
+            )}
           </CardContent>
         </Card>
       )}
