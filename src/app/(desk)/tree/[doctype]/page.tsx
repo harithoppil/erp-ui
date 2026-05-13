@@ -16,7 +16,8 @@ interface PageProps {
 }
 
 export default async function TreePage({ params }: PageProps) {
-  const { doctype } = await params;
+  const { doctype: raw } = await params;
+  const doctype = decodeURIComponent(raw);
 
   const docType = await queryOne<DocType>(
     `SELECT name, module, istable, is_tree, issingle, icon FROM "tabDocType" WHERE name = $1`,

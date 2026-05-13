@@ -2,8 +2,10 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import type { DocType } from "@/types/erp";
 import type { FormField, FormTab } from "@/types/form";
+import { LinkAutocomplete } from "@/components/link-autocomplete";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -46,11 +48,41 @@ export function FormClient({
   isNew,
   docName,
 }: FormClientProps) {
+  const router = useRouter();
   const [values, setValues] = useState<Record<string, unknown>>(docData);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   function updateValue(fieldname: string, value: unknown) {
     setValues((prev) => ({ ...prev, [fieldname]: value }));
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/doc/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          doctype: docType.name,
+          name: isNew ? undefined : docName,
+          values,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? "Save failed");
+      } else if (isNew && data.name) {
+        router.push(`/form/${docType.name}/${encodeURIComponent(data.name)}`);
+      } else {
+        router.refresh();
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
   }
 
   // Group fields within each tab by section
@@ -143,15 +175,14 @@ export function FormClient({
         );
 
       case "Link":
-        // For Link fields, show as text input for now (autocomplete later)
         return (
-          <Input
+          <LinkAutocomplete
             id={field.fieldname}
-            type="text"
-            value={val ? String(val) : ""}
-            placeholder={`Search ${field.options ?? ""}...`}
+            doctype={field.options ?? ""}
+            value={val != null ? String(val) : ""}
+            onChange={(v) => updateValue(field.fieldname, v)}
             disabled={isReadOnly}
-            onChange={(e) => updateValue(field.fieldname, e.target.value)}
+            placeholder={`Search ${field.options ?? ""}...`}
           />
         );
 
@@ -225,7 +256,7 @@ export function FormClient({
             {displayTitle}
           </h1>
         </div>
-        <Button className="gap-2" disabled={saving}>
+        <Button className="gap-2" disabled={saving} onClick={handleSave}>
           {saving ? (
             <Loader2 size={16} className="animate-spin" />
           ) : (
@@ -234,6 +265,12 @@ export function FormClient({
           {saving ? "Saving..." : "Save"}
         </Button>
       </div>
+
+      {error && (
+        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          {error}
+        </div>
+      )}
 
       {/* Form with tabs */}
       {tabs.length > 1 ? (
@@ -290,7 +327,7 @@ export function FormClient({
                 <div key={field.fieldname} className="space-y-1">
                   <Label htmlFor={field.fieldname}>
                     {field.label}
-                    {field.mandatory === 1 && (
+                    {field.reqd === 1 && (
                       <span className="text-red-500"> *</span>
                     )}
                   </Label>

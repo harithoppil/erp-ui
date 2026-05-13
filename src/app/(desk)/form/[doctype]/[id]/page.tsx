@@ -9,7 +9,9 @@ interface PageProps {
 }
 
 export default async function FormPage({ params }: PageProps) {
-  const { doctype, id } = await params;
+  const { doctype: rawDoctype, id: rawId } = await params;
+  const doctype = decodeURIComponent(rawDoctype);
+  const id = decodeURIComponent(rawId);
 
   const docType = await queryOne<DocType>(
     `SELECT name, module, istable, is_tree, issingle, icon FROM "tabDocType" WHERE name = $1`,
@@ -20,7 +22,7 @@ export default async function FormPage({ params }: PageProps) {
 
   // Get all visible fields — include Section Break and Column Break for layout
   const fields = await query<DocField>(
-    `SELECT name, parent, label, fieldname, fieldtype, options, mandatory, hidden, idx, default_value, description, depends_on, read_only, reqd, in_list_view, in_standard_filter
+    `SELECT name, parent, label, fieldname, fieldtype, options, hidden, idx, "default", description, depends_on, read_only, reqd, in_list_view, in_standard_filter
      FROM "tabDocField"
      WHERE parent = $1 AND hidden = 0 AND fieldtype NOT IN ('HTML', 'Button', 'Image', 'Color', 'Heading', 'Attach', 'Attach Image', 'Signature', 'Geolocation')
      ORDER BY idx`,
