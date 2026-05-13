@@ -6,8 +6,6 @@ import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
-  CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
 import {
   Table,
@@ -17,7 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Plus, ArrowLeft } from "lucide-react";
+import { Plus, ArrowLeft, List, Columns, CalendarDays } from "lucide-react";
 
 interface ListClientProps {
   docType: DocType;
@@ -41,14 +39,36 @@ export function ListClient({ docType, fields, rows }: ListClientProps) {
             {rows.length} records
           </span>
         </div>
-        {!docType.issingle && (
-          <Link href={`/form/${docType.name}/new`}>
-            <Button className="gap-2">
-              <Plus size={16} />
-              Add {docType.name}
-            </Button>
-          </Link>
-        )}
+        <div className="flex items-center gap-2">
+          <div className="flex items-center rounded-md border bg-white p-0.5 text-xs">
+            <Link
+              href={`/list/${docType.name}`}
+              className="flex items-center gap-1 rounded bg-gray-100 px-2 py-1"
+            >
+              <List size={12} /> List
+            </Link>
+            <Link
+              href={`/kanban/${docType.name}`}
+              className="flex items-center gap-1 rounded px-2 py-1 hover:bg-gray-100"
+            >
+              <Columns size={12} /> Kanban
+            </Link>
+            <Link
+              href={`/calendar/${docType.name}`}
+              className="flex items-center gap-1 rounded px-2 py-1 hover:bg-gray-100"
+            >
+              <CalendarDays size={12} /> Calendar
+            </Link>
+          </div>
+          {!docType.issingle && (
+            <Link href={`/form/${docType.name}/new`}>
+              <Button className="gap-2">
+                <Plus size={16} />
+                Add {docType.name}
+              </Button>
+            </Link>
+          )}
+        </div>
       </div>
 
       {/* Table */}
