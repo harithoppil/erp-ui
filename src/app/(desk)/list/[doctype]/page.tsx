@@ -19,7 +19,7 @@ export default async function ListPage({ params }: PageProps) {
 
   // Get fields that should show in list view
   const fields = await query<DocField>(
-    `SELECT name, parent, label, fieldname, fieldtype, options, mandatory, hidden, idx, default_value, description, depends_on, read_only, reqd, in_list_view, in_standard_filter
+    `SELECT name, parent, label, fieldname, fieldtype, options, hidden, idx, "default", description, depends_on, read_only, reqd, in_list_view, in_standard_filter
      FROM "tabDocField"
      WHERE parent = $1 AND hidden = 0 AND fieldtype NOT IN ('Section Break', 'Column Break', 'Tab Break', 'HTML', 'Button', 'Image', 'Color', 'Heading', 'Attach', 'Attach Image', 'Signature', 'Geolocation', 'Table', 'Table MultiSelect')
      ORDER BY idx`,
@@ -32,19 +32,28 @@ export default async function ListPage({ params }: PageProps) {
       ? listFields
       : fields.filter((f) => !f.hidden).slice(0, 5);
 
-  // Get actual data — handle empty display fields gracefully
+  // Get actual data
   const tableName = `tab${doctype.replace(/\s+/g, "")}`;
   const selectCols = displayFields.length > 0
     ? ", " + displayFields.map((f) => `"${f.fieldname}"`).join(", ")
     : "";
 
   let rows: Record<string, unknown>[] = [];
+  let error: string | null = null;
+
   try {
     rows = await query<Record<string, unknown>>(
       `SELECT name${selectCols} FROM "${tableName}" ORDER BY creation DESC LIMIT 50`
     );
-  } catch {
-    rows = [];
+  } catch (err: any) {
+    // Check if table doesn't exist
+    if (err.code === "42P01") {
+      error = `Table "${tableName}" does not exist yet. Create your first ${doctype} to get started.`;
+      rows = [];
+    } else {
+      error = err.message || "Failed to load records";
+      rows = [];
+    }
   }
 
   return (
@@ -52,6 +61,7 @@ export default async function ListPage({ params }: PageProps) {
       docType={docType}
       fields={displayFields}
       rows={rows}
+      error={error}
     />
   );
 }

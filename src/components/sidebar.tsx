@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import type { DesktopIcon, WorkspaceSidebarItem } from "@/types/erp";
+import type { DesktopRoute } from "@/lib/routes";
 import { useSidebarContext } from "@/components/sidebar-context";
 import {
   Home,
@@ -93,9 +94,10 @@ function getIcon(iconName: string | null | undefined): LucideIcon {
 
 interface SidebarProps {
   icons: DesktopIcon[];
+  routes: DesktopRoute[];
 }
 
-export function Sidebar({ icons }: SidebarProps) {
+export function Sidebar({ icons, routes }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -129,14 +131,31 @@ export function Sidebar({ icons }: SidebarProps) {
     workspaceItems.length > 0 ? workspaceItems : fetchedItems;
   const activeDoctypeMap = fetchedDoctypeMap;
 
-  const rootIcons = icons.filter((i) => !i.parent_icon);
+  // Build route lookup
+  const routeMap = new Map(routes.map((r) => [r.name, r]));
+
+  // Build folder tree. Icons with parent_icon that doesn't exist as a root
+  // are treated as direct sidebar items (e.g., Assets under missing "ERPNext").
+  const rootNames = new Set(icons.filter((i) => !i.parent_icon).map((i) => i.name));
   const folderChildren: Record<string, DesktopIcon[]> = {};
+  const orphaned: DesktopIcon[] = [];
   for (const icon of icons) {
     if (icon.parent_icon) {
-      if (!folderChildren[icon.parent_icon]) folderChildren[icon.parent_icon] = [];
-      folderChildren[icon.parent_icon].push(icon);
+      if (rootNames.has(icon.parent_icon)) {
+        if (!folderChildren[icon.parent_icon]) folderChildren[icon.parent_icon] = [];
+        folderChildren[icon.parent_icon].push(icon);
+      } else {
+        // Parent doesn't exist as a root icon — show directly
+        orphaned.push(icon);
+      }
     }
   }
+  const rootIcons = [
+    ...icons.filter((i) => !i.parent_icon),
+    ...orphaned,
+  ];
+
+
 
   function toggleFolder(name: string) {
     setExpandedFolders((prev) => {
@@ -147,31 +166,33 @@ export function Sidebar({ icons }: SidebarProps) {
     });
   }
 
-  function navigateTo(linkTo: string | null) {
-    if (!linkTo) return;
-    router.push(`/workspace/${linkTo.toLowerCase().replace(/\s+/g, "-")}`);
+  function navigateTo(icon: DesktopIcon) {
+    const route = routeMap.get(icon.name);
+    if (route && route.href !== "#") {
+      router.push(route.href);
+    }
   }
 
-  function isActive(linkTo: string | null): boolean {
-    if (!linkTo) return false;
-    const slug = linkTo.toLowerCase().replace(/\s+/g, "-");
-    return pathname === `/workspace/${slug}`;
+  function isActive(icon: DesktopIcon): boolean {
+    const route = routeMap.get(icon.name);
+    if (!route || route.href === "#") return false;
+    return pathname === route.href || pathname.startsWith(route.href + "/");
   }
 
   function renderIcon(icon: DesktopIcon) {
     const Icon = getIcon(icon.icon);
-    const active = isActive(icon.link_to);
-    const isFolder = icon.icon_type === "folder" || !!folderChildren[icon.name];
+    const active = isActive(icon);
+    const isFolder = (icon.icon_type ?? "").toLowerCase() === "folder" || !!folderChildren[icon.name];
     const isExpanded = expandedFolders.has(icon.name);
 
     return (
       <div key={icon.name}>
         <button
           onClick={() => {
-            if (isFolder) {
+            if (isFolder && !icon.link_to) {
               toggleFolder(icon.name);
             } else {
-              navigateTo(icon.link_to);
+              navigateTo(icon);
             }
           }}
           className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors ${
@@ -191,11 +212,11 @@ export function Sidebar({ icons }: SidebarProps) {
           <div className="ml-4 mt-1 space-y-1">
             {folderChildren[icon.name].map((child) => {
               const ChildIcon = getIcon(child.icon);
-              const childActive = isActive(child.link_to);
+              const childActive = isActive(child);
               return (
                 <button
                   key={child.name}
-                  onClick={() => navigateTo(child.link_to)}
+                  onClick={() => navigateTo(child)}
                   className={`flex w-full items-center gap-3 rounded-lg px-3 py-1.5 text-left text-sm transition-colors ${
                     childActive
                       ? "bg-blue-50 text-blue-700 font-medium"

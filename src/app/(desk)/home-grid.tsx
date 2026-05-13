@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import type { DesktopIcon, Workspace } from "@/types/erp";
+import type { DesktopRoute } from "@/lib/routes";
 import {
   Home,
   DollarSign,
@@ -32,6 +33,7 @@ import {
   Rocket,
   UserRound,
   FileText,
+  BarChart3,
   type LucideIcon,
 } from "lucide-react";
 
@@ -73,6 +75,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   "user-round": UserRound,
   file: FileText,
   hammer: Wrench,
+  "bar-chart-3": BarChart3,
 };
 
 const MODULE_COLORS: Record<string, string> = {
@@ -101,24 +104,33 @@ function getIcon(name: string | null | undefined): LucideIcon {
 interface HomeGridProps {
   icons: DesktopIcon[];
   workspaces: Workspace[];
+  routes: DesktopRoute[];
 }
 
-export function HomeGrid({ icons, workspaces }: HomeGridProps) {
+export function HomeGrid({ icons, workspaces, routes }: HomeGridProps) {
   const workspaceMap = new Map(workspaces.map((w) => [w.name, w]));
+  const routeMap = new Map(routes.map((r) => [r.name, r]));
+
+  // Show all icons that have a valid route (not folders with no link)
+  const visibleIcons = icons.filter((icon) => {
+    const route = routeMap.get(icon.name);
+    return route && route.href !== "#";
+  });
 
   return (
     <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-      {icons.map((icon) => {
+      {visibleIcons.map((icon) => {
         const Icon = getIcon(icon.icon);
+        const route = routeMap.get(icon.name);
         const linkTo = icon.link_to ?? icon.name;
         const ws = workspaceMap.get(linkTo);
         const color = ws ? MODULE_COLORS[ws.module] ?? "#7f8c8d" : "#7f8c8d";
-        const slug = linkTo.toLowerCase().replace(/\s+/g, "-");
+        const href = route?.href ?? "#";
 
         return (
           <Link
             key={icon.name}
-            href={`/workspace/${slug}`}
+            href={href}
             className="group flex flex-col items-center gap-3 rounded-lg border bg-white p-6 transition-shadow hover:shadow-md"
           >
             <div

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import Link from "next/link";
 import type { DocType } from "@/types/erp";
 import type { FormField, FormTab } from "@/types/form";
@@ -29,7 +29,8 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
-import { ArrowLeft, Save, Loader2 } from "lucide-react";
+import { ArrowLeft, Save, Loader2, Zap, AlertCircle } from "lucide-react";
+import { useFormTriggers } from "@/hooks/useFormTriggers";
 
 interface FormClientProps {
   docType: DocType;
@@ -37,6 +38,7 @@ interface FormClientProps {
   docData: Record<string, unknown>;
   isNew: boolean;
   docName: string;
+  error?: string | null;
 }
 
 export function FormClient({
@@ -45,12 +47,23 @@ export function FormClient({
   docData,
   isNew,
   docName,
+  error,
 }: FormClientProps) {
   const [values, setValues] = useState<Record<string, unknown>>(docData);
   const [saving, setSaving] = useState(false);
 
-  function updateValue(fieldname: string, value: unknown) {
+  const { executeFieldTriggers, hasTriggers } = useFormTriggers(
+    docType.name,
+    values,
+    setValues
+  );
+
+  async function updateValue(fieldname: string, value: unknown) {
     setValues((prev) => ({ ...prev, [fieldname]: value }));
+    // Fire triggers after state update (next tick)
+    setTimeout(() => {
+      executeFieldTriggers(fieldname, value);
+    }, 0);
   }
 
   // Group fields within each tab by section
@@ -213,6 +226,16 @@ export function FormClient({
   return (
     <div className="space-y-4">
       {/* Header */}
+      {error && (
+        <div className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-4">
+          <AlertCircle size={20} className="mt-0.5 text-red-600" />
+          <div>
+            <p className="text-sm font-medium text-red-800">Server Error</p>
+            <p className="text-sm text-red-700">{error}</p>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Link
@@ -224,8 +247,14 @@ export function FormClient({
           <h1 className="text-xl font-semibold text-gray-900">
             {displayTitle}
           </h1>
+          {hasTriggers && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 border border-amber-200">
+              <Zap size={12} />
+              Triggers
+            </span>
+          )}
         </div>
-        <Button className="gap-2" disabled={saving}>
+        <Button className="gap-2" disabled={saving || !!error}>
           {saving ? (
             <Loader2 size={16} className="animate-spin" />
           ) : (
@@ -290,7 +319,7 @@ export function FormClient({
                 <div key={field.fieldname} className="space-y-1">
                   <Label htmlFor={field.fieldname}>
                     {field.label}
-                    {field.mandatory === 1 && (
+                    {field.reqd === 1 && (
                       <span className="text-red-500"> *</span>
                     )}
                   </Label>

@@ -1,10 +1,11 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { query } from "@/lib/db";
-import type { DesktopIcon } from "@/types/erp";
+import type { DesktopIcon, WorkspaceSidebarItem } from "@/types/erp";
 import { Sidebar } from "@/components/sidebar";
 import { TopBar } from "@/components/topbar";
 import { SidebarProvider } from "@/components/sidebar-context";
+import { resolveDesktopRoutes } from "@/lib/routes";
 
 async function getSidebarItems(): Promise<DesktopIcon[]> {
   return query<DesktopIcon>(
@@ -23,12 +24,15 @@ export default async function DeskLayout({
   const session = await getSession();
   if (!session) redirect("/login");
 
-  const sidebarItems = await getSidebarItems();
+  const [sidebarItems, desktopRoutes] = await Promise.all([
+    getSidebarItems(),
+    resolveDesktopRoutes(),
+  ]);
 
   return (
     <SidebarProvider>
       <div className="flex h-screen overflow-hidden">
-        <Sidebar icons={sidebarItems} />
+        <Sidebar icons={sidebarItems} routes={desktopRoutes} />
         <div className="flex flex-1 flex-col overflow-hidden lg:ml-64">
           <TopBar user={session} />
           <main className="flex-1 overflow-y-auto bg-[#f5f5f5] p-6">

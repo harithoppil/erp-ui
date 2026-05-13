@@ -1,6 +1,7 @@
 import { query } from "@/lib/db";
 import type { DesktopIcon, Workspace } from "@/types/erp";
 import { HomeGrid } from "@/app/(desk)/home-grid";
+import { resolveDesktopRoutes } from "@/lib/routes";
 
 async function getWorkspaces(): Promise<Workspace[]> {
   return query<Workspace>(
@@ -8,19 +9,20 @@ async function getWorkspaces(): Promise<Workspace[]> {
   );
 }
 
-async function getDirectIcons(): Promise<DesktopIcon[]> {
+async function getAllIcons(): Promise<DesktopIcon[]> {
   return query<DesktopIcon>(
     `SELECT name, label, icon_type, link_type, link_to, parent_icon, sidebar, standard, app, icon, hidden, idx
      FROM "tabDesktop Icon"
-     WHERE hidden = 0 AND parent_icon IS NULL
+     WHERE hidden = 0
      ORDER BY idx`
   );
 }
 
 export default async function DeskHome() {
-  const [workspaces, directIcons] = await Promise.all([
+  const [workspaces, icons, routes] = await Promise.all([
     getWorkspaces(),
-    getDirectIcons(),
+    getAllIcons(),
+    resolveDesktopRoutes(),
   ]);
 
   const hour = new Date().getHours();
@@ -38,7 +40,7 @@ export default async function DeskHome() {
         </p>
       </div>
 
-      <HomeGrid icons={directIcons} workspaces={workspaces} />
+      <HomeGrid icons={icons} workspaces={workspaces} routes={routes} />
     </div>
   );
 }

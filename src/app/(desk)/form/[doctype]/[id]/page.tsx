@@ -1,6 +1,6 @@
 import { query, queryOne } from "@/lib/db";
 import type { DocType, DocField } from "@/types/erp";
-import type { FormTab, FormField } from "@/types/form";
+import type { FormTab } from "@/types/form";
 import { notFound } from "next/navigation";
 import { FormClient } from "./form-client";
 
@@ -18,16 +18,16 @@ export default async function FormPage({ params }: PageProps) {
 
   if (!docType) notFound();
 
-  // Get all visible fields — include Section Break and Column Break for layout
+  // Get all visible fields
   const fields = await query<DocField>(
-    `SELECT name, parent, label, fieldname, fieldtype, options, mandatory, hidden, idx, default_value, description, depends_on, read_only, reqd, in_list_view, in_standard_filter
+    `SELECT name, parent, label, fieldname, fieldtype, options, hidden, idx, "default", description, depends_on, read_only, reqd, in_list_view, in_standard_filter
      FROM "tabDocField"
      WHERE parent = $1 AND hidden = 0 AND fieldtype NOT IN ('HTML', 'Button', 'Image', 'Color', 'Heading', 'Attach', 'Attach Image', 'Signature', 'Geolocation')
      ORDER BY idx`,
     [doctype]
   );
 
-  // Group fields by tabs (Tab Break) and sections (Section Break)
+  // Group fields by tabs and sections
   const tabs: FormTab[] = [];
   let currentTab: FormTab = { label: "General", fields: [] };
   let currentSection = "";
@@ -42,7 +42,6 @@ export default async function FormPage({ params }: PageProps) {
     } else if (field.fieldtype === "Section Break") {
       currentSection = field.label;
     } else if (field.fieldtype === "Column Break") {
-      // Column breaks are handled by the grid layout, skip
       continue;
     } else {
       currentTab.fields.push({ ...field, section: currentSection });
@@ -52,21 +51,19 @@ export default async function FormPage({ params }: PageProps) {
     tabs.push(currentTab);
   }
 
-  // If no tabs, just one tab with all fields
   if (tabs.length === 0) {
     tabs.push({
       label: "General",
       fields: fields
-        .filter(
-          (f) =>
-            f.fieldtype !== "Section Break" && f.fieldtype !== "Column Break"
-        )
+        .filter((f) => f.fieldtype !== "Section Break" && f.fieldtype !== "Column Break")
         .map((f) => ({ ...f, section: "" })),
     });
   }
 
-  // Get existing doc data if not creating new
+  // Get existing doc data
   let docData: Record<string, unknown> | null = null;
+  let error: string | null = null;
+
   if (id !== "new" && !docType.issingle) {
     const tableName = `tab${doctype.replace(/\s+/g, "")}`;
     try {
@@ -74,11 +71,14 @@ export default async function FormPage({ params }: PageProps) {
         `SELECT * FROM "${tableName}" WHERE name = $1`,
         [id]
       );
-    } catch {
-      docData = null;
+    } catch (err: any) {
+      if (err.code === "42P01") {
+        error = `Table "${tableName}" does not exist.`;
+      } else {
+        error = err.message || "Failed to load document";
+      }
     }
   } else if (docType.issingle) {
-    // Single DocTypes store values in tabSingles, not their own table
     try {
       const rows = await query<{ field: string; value: string }>(
         `SELECT field, value FROM "tabSingles" WHERE doctype = $1`,
@@ -90,12 +90,12 @@ export default async function FormPage({ params }: PageProps) {
           docData[row.field] = row.value;
         }
       }
-    } catch {
-      docData = null;
+    } catch (err: any) {
+      error = err.message || "Failed to load document";
     }
   }
 
-  if (id !== "new" && !docType.issingle && !docData) {
+  if (id !== "new" && !docType.issingle && !docData && !error) {
     notFound();
   }
 
@@ -106,6 +106,7 @@ export default async function FormPage({ params }: PageProps) {
       docData={docData ?? {}}
       isNew={id === "new"}
       docName={id === "new" ? "" : id}
+      error={error}
     />
   );
 }
