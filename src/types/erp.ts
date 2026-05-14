@@ -90,10 +90,9 @@ export interface DocField {
   fieldname: string;
   fieldtype: string;
   options: string | null;
-  mandatory: number;
   hidden: number;
   idx: number;
-  default_value: string | null;
+  default: string | null;
   description: string | null;
   depends_on: string | null;
   read_only: number;

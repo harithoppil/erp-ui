@@ -1,4 +1,5 @@
 import { query, queryOne } from "@/lib/db";
+import { tableName } from "@/lib/frappe";
 import type { DocType, DocField } from "@/types/erp";
 import { notFound } from "next/navigation";
 import { ListClient } from "./list-client";
@@ -8,7 +9,8 @@ interface PageProps {
 }
 
 export default async function ListPage({ params }: PageProps) {
-  const { doctype } = await params;
+  const { doctype: raw } = await params;
+  const doctype = decodeURIComponent(raw);
 
   const docType = await queryOne<DocType>(
     `SELECT name, module, istable, is_tree, issingle, icon FROM "tabDocType" WHERE name = $1`,
@@ -19,7 +21,7 @@ export default async function ListPage({ params }: PageProps) {
 
   // Get fields that should show in list view
   const fields = await query<DocField>(
-    `SELECT name, parent, label, fieldname, fieldtype, options, mandatory, hidden, idx, default_value, description, depends_on, read_only, reqd, in_list_view, in_standard_filter
+    `SELECT name, parent, label, fieldname, fieldtype, options, hidden, idx, "default", description, depends_on, read_only, reqd, in_list_view, in_standard_filter
      FROM "tabDocField"
      WHERE parent = $1 AND hidden = 0 AND fieldtype NOT IN ('Section Break', 'Column Break', 'Tab Break', 'HTML', 'Button', 'Image', 'Color', 'Heading', 'Attach', 'Attach Image', 'Signature', 'Geolocation', 'Table', 'Table MultiSelect')
      ORDER BY idx`,
@@ -33,7 +35,7 @@ export default async function ListPage({ params }: PageProps) {
       : fields.filter((f) => !f.hidden).slice(0, 5);
 
   // Get actual data — handle empty display fields gracefully
-  const tableName = `tab${doctype.replace(/\s+/g, "")}`;
+  const table = tableName(doctype);
   const selectCols = displayFields.length > 0
     ? ", " + displayFields.map((f) => `"${f.fieldname}"`).join(", ")
     : "";
@@ -41,7 +43,7 @@ export default async function ListPage({ params }: PageProps) {
   let rows: Record<string, unknown>[] = [];
   try {
     rows = await query<Record<string, unknown>>(
-      `SELECT name${selectCols} FROM "${tableName}" ORDER BY creation DESC LIMIT 50`
+      `SELECT name${selectCols} FROM "${table}" ORDER BY creation DESC LIMIT 50`
     );
   } catch {
     rows = [];
